@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="健康管理">
+<meta name="theme-color" content="#f5f5f0">
+<title>健康管理ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;font-size:15px;}
+.container{max-width:760px;margin:0 auto;padding:1.5rem 1rem;}
+h1{font-size:18px;font-weight:500;margin-bottom:1.5rem;}
+.tabs{display:flex;gap:2px;border-bottom:1px solid #e0dfd7;margin-bottom:1.5rem;flex-wrap:wrap;}
+.tab{font-size:13px;padding:7px 14px;border:none;background:none;color:#888;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;}
+.tab.active{color:#1a1a1a;font-weight:500;border-bottom-color:#1a1a1a;}
+.panel{display:none;}.panel.active{display:block;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:1.5rem;}
+@media(max-width:600px){.stats-grid{grid-template-columns:repeat(2,1fr);}}
+.stat{background:#ebebе6;border-radius:8px;padding:12px 14px;}
+.stat-label{font-size:11px;color:#888;margin-bottom:4px;}
+.stat-val{font-size:20px;font-weight:500;}
+.stat-unit{font-size:12px;color:#888;margin-left:2px;}
+.stat-delta{font-size:11px;margin-top:2px;}
+.delta-up{color:#c0392b;}.delta-down{color:#27ae60;}.delta-eq{color:#888;}
+.card{background:#fff;border:1px solid #e8e7df;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem;}
+.card-title{font-size:12px;color:#888;margin-bottom:1rem;font-weight:500;}
+.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px;}
+.field{display:flex;flex-direction:column;gap:4px;}
+.field label{font-size:12px;color:#666;}
+.field input,.field select{font-size:14px;padding:7px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;width:100%;}
+.field input:focus,.field select:focus{outline:none;border-color:#999;}
+.save-btn{font-size:13px;padding:7px 18px;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;margin-top:4px;}
+.save-btn:hover{opacity:.85;}.save-btn:disabled{opacity:.4;cursor:not-allowed;}
+.ai-btn{font-size:12px;padding:6px 14px;border:1px solid #2980b9;border-radius:8px;background:#ebf5fb;color:#1a5276;cursor:pointer;margin-left:8px;margin-top:4px;}
+.ai-btn:hover{opacity:.85;}.ai-btn:disabled{opacity:.4;cursor:not-allowed;}
+.ai-result{margin-top:10px;padding:10px 12px;background:#ebf5fb;border-radius:8px;font-size:12px;color:#1a5276;display:none;line-height:1.6;}
+.ai-result.show{display:block;}
+.log-row{display:flex;align-items:center;padding:7px 0;border-bottom:1px solid #f0efe7;font-size:13px;}
+.log-row:last-child{border-bottom:none;}
+.log-date{color:#aaa;width:70px;flex-shrink:0;font-size:12px;}
+.log-vals{flex:1;}
+.chart-wrap{position:relative;height:160px;margin-top:4px;}
+.no-data{font-size:13px;color:#aaa;text-align:center;padding:2rem 0;}
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:4px;margin-right:4px;}
+.b-weight{background:#dbeafe;color:#1e40af;}
+.b-sleep{background:#ede9fe;color:#4c1d95;}
+.b-ex{background:#dcfce7;color:#14532d;}
+.b-food{background:#fef3c7;color:#78350f;}
+.b-kcal{background:#fee2e2;color:#7f1d1d;}
+.sync-bar{display:flex;align-items:center;gap:8px;font-size:12px;color:#888;margin-bottom:1rem;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#27ae60;flex-shrink:0;}
+.sync-dot.err{background:#e74c3c;}
+.sync-dot.loading{background:#f39c12;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.macro-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;}
+.macro-card{background:#f5f5f0;border-radius:8px;padding:8px 10px;}
+.macro-name{font-size:11px;color:#888;}
+.macro-val{font-size:15px;font-weight:500;}
+.macro-bar{height:6px;border-radius:3px;background:#e0dfd7;margin:4px 0;overflow:hidden;}
+.macro-fill{height:100%;border-radius:3px;}
+.ai-hint{font-size:11px;color:#aaa;margin-top:3px;}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>健康管理ダッシュボード</h1>
+
+<div class="sync-bar">
+  <div class="sync-dot loading" id="sync-dot"></div>
+  <span id="sync-status">読み込み中...</span>
+  <button onclick="reloadAll()" style="margin-left:auto;font-size:11px;padding:3px 10px;border:1px solid #ddd;border-radius:4px;background:none;color:#888;cursor:pointer;">再読み込み</button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('overview')">概要</button>
+  <button class="tab" onclick="switchTab('weight')">体重</button>
+  <button class="tab" onclick="switchTab('sleep')">睡眠</button>
+  <button class="tab" onclick="switchTab('exercise')">運動</button>
+  <button class="tab" onclick="switchTab('food')">食事</button>
+  <button class="tab" onclick="switchTab('log')">記録一覧</button>
+</div>
+
+<!-- 概要 -->
+<div id="tab-overview" class="panel active">
+  <div class="stats-grid">
+    <div class="stat"><div class="stat-label">最新体重</div><div><span class="stat-val" id="ov-weight">--</span><span class="stat-unit">kg</span></div><div class="stat-delta" id="ov-weight-d"></div></div>
+    <div class="stat"><div class="stat-label">昨夜の睡眠</div><div><span class="stat-val" id="ov-sleep">--</span><span class="stat-unit">h</span></div><div class="stat-delta" id="ov-sleep-d"></div></div>
+    <div class="stat"><div class="stat-label">今週の運動</div><div><span class="stat-val" id="ov-ex">--</span><span class="stat-unit">回</span></div><div class="stat-delta" id="ov-ex-d"></div></div>
+    <div class="stat"><div class="stat-label">本日カロリー</div><div><span class="stat-val" id="ov-kcal">--</span><span class="stat-unit">kcal</span></div><div class="stat-delta" id="ov-kcal-d"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">今日の記録を追加</div>
+    <div class="form-row">
+      <div class="field"><label>日付</label><input type="date" id="q-date"></div>
+      <div class="field"><label>体重 (kg)</label><input type="number" id="q-weight" step="0.1" placeholder="70.0"></div>
+      <div class="field"><label>睡眠 (時間)</label><input type="number" id="q-sleep" step="0.5" min="0" max="24" placeholder="7.0"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>運動種目</label><input type="text" id="q-exname" placeholder="ランニング"></div>
+      <div class="field"><label>運動時間 (分)</label><input type="number" id="q-exmin" step="5" min="0" placeholder="30"></div>
+      <div class="field"><label>強度</label><select id="q-exint"><option value="">選択</option><option>低</option><option>中</option><option>高</option></select></div>
+    </div>
+    <button class="save-btn" id="q-btn" onclick="saveQuick()">記録する</button>
+    <span id="q-msg" style="font-size:12px;margin-left:10px;"></span>
+  </div>
+  <div class="card"><div class="card-title">体重の推移（直近14日）</div><div class="chart-wrap"><canvas id="chart-ov-weight"></canvas></div></div>
+  <div class="card"><div class="card-title">カロリー推移（直近7日）</div><div class="chart-wrap"><canvas id="chart-ov-kcal"></canvas></div></div>
+</div>
+
+<!-- 体重 -->
+<div id="tab-weight" class="panel">
+  <div class="card">
+    <div class="card-title">体重を記録</div>
+    <div class="form-row">
+      <div class="field"><label>日付</label><input type="date" id="w-date"></div>
+      <div class="field"><label>体重 (kg)</label><input type="number" id="w-kg" step="0.1" placeholder="70.0"></div>
+      <div class="field"><label>体脂肪率 (%)</label><input type="number" id="w-fat" step="0.1" min="0" max="60" placeholder="20.0"></div>
+    </div>
+    <div class="form-row"><div class="field"><label>メモ</label><input type="text" id="w-note" placeholder="朝食前など"></div></div>
+    <button class="save-btn" id="w-btn" onclick="saveWeight()">記録する</button>
+    <span id="w-msg" style="font-size:12px;margin-left:10px;"></span>
+  </div>
+  <div class="card"><div class="card-title">体重推移</div><div class="chart-wrap"><canvas id="chart-weight"></canvas></div></div>
+  <div class="card"><div class="card-title">体脂肪率推移</div><div class="chart-wrap"><canvas id="chart-fat"></canvas></div></div>
+</div>
+
+<!-- 睡眠 -->
+<div id="tab-sleep" class="panel">
+  <div class="card">
+    <div class="card-title">睡眠を記録</div>
+    <div class="form-row">
+      <div class="field"><label>日付</label><input type="date" id="s-date"></div>
+      <div class="field"><label>睡眠時間 (h)</label><input type="number" id="s-h" step="0.5" min="0" max="24" placeholder="7.0"></div>
+      <div class="field"><label>質 (1〜5)</label><input type="number" id="s-q" step="1" min="1" max="5" placeholder="4"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>就寝時刻</label><input type="time" id="s-bed"></div>
+      <div class="field"><label>起床時刻</label><input type="time" id="s-wake"></div>
+      <div class="field"><label>メモ</label><input type="text" id="s-note" placeholder="深く眠れたなど"></div>
+    </div>
+    <button class="save-btn" id="s-btn" onclick="saveSleep()">記録する</button>
+    <span id="s-msg" style="font-size:12px;margin-left:10px;"></span>
+  </div>
+  <div class="card"><div class="card-title">睡眠時間の推移</div><div class="chart-wrap"><canvas id="chart-sleep"></canvas></div></div>
+  <div class="card"><div class="card-title">睡眠の質の推移</div><div class="chart-wrap"><canvas id="chart-sleepq"></canvas></div></div>
+</div>
+
+<!-- 運動 -->
+<div id="tab-exercise" class="panel">
+  <div class="card">
+    <div class="card-title">運動を記録</div>
+    <div class="form-row">
+      <div class="field"><label>日付</label><input type="date" id="e-date"></div>
+      <div class="field"><label>種目</label><input type="text" id="e-name" placeholder="ランニング、筋トレ..."></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>時間 (分)</label><input type="number" id="e-min" step="5" min="0" placeholder="30"></div>
+      <div class="field"><label>強度</label><select id="e-int"><option value="">選択</option><option>低</option><option>中</option><option>高</option></select></div>
+      <div class="field"><label>メモ</label><input type="text" id="e-note" placeholder="5km走ったなど"></div>
+    </div>
+    <button class="save-btn" id="e-btn" onclick="saveExercise()">記録する</button>
+    <span id="e-msg" style="font-size:12px;margin-left:10px;"></span>
+  </div>
+  <div class="card"><div class="card-title">今週の運動（回数・時間）</div><div class="chart-wrap"><canvas id="chart-ex"></canvas></div></div>
+</div>
+
+<!-- 食事 -->
+<div id="tab-food" class="panel">
+  <div class="card">
+    <div class="card-title">食事を記録</div>
+
+    <!-- モード切替 -->
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button id="mode-photo-btn" onclick="setFoodMode('photo')" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid #1a1a1a;background:#1a1a1a;color:#fff;font-size:13px;cursor:pointer;">📷 写真から記録</button>
+      <button id="mode-manual-btn" onclick="setFoodMode('manual')" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-size:13px;cursor:pointer;">✏️ 手動で入力</button>
+    </div>
+
+    <!-- 写真モード -->
+    <div id="food-photo-mode">
+      <div id="photo-drop" onclick="document.getElementById('photo-input').click()" style="border:1.5px dashed #ccc;border-radius:10px;padding:1.5rem;text-align:center;cursor:pointer;margin-bottom:12px;">
+        <div style="font-size:28px;margin-bottom:6px;">📷</div>
+        <div style="font-size:14px;color:#444;font-weight:500;">写真をタップして選択</div>
+        <div style="font-size:12px;color:#aaa;margin-top:4px;">撮影時刻を自動記録 · AIがPFCを推定</div>
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none" onchange="onPhotoSelected(this)">
+      </div>
+      <div id="photo-preview" style="display:none;margin-bottom:12px;position:relative;">
+        <img id="preview-img" style="width:100%;max-height:220px;object-fit:cover;border-radius:10px;">
+        <button onclick="clearPhoto()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.55);color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:16px;cursor:pointer;line-height:1;">×</button>
+      </div>
+      <div style="margin-bottom:10px;">
+        <button class="ai-btn" id="ai-btn" onclick="estimateNutrition()" style="width:100%;padding:10px;font-size:14px;margin-left:0;">✦ AIで自動推定</button>
+        <span id="ai-status" style="font-size:12px;color:#888;display:block;margin-top:6px;text-align:center;"></span>
+      </div>
+      <div class="ai-result" id="ai-result"></div>
+      <div style="font-size:12px;color:#aaa;margin:10px 0 6px;">推定結果を確認・修正してから保存</div>
+    </div>
+
+    <!-- 手動モード -->
+    <div id="food-manual-mode" style="display:none;">
+      <div class="form-row">
+        <div class="field">
+          <label>食事内容</label>
+          <input type="text" id="f-name-manual" placeholder="マック、牛丼、鶏むね定食...">
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <button class="ai-btn" id="ai-btn-manual" onclick="estimateNutritionManual()" style="padding:8px 16px;margin-left:0;">✦ 名前からAI推定</button>
+        <span id="ai-status-manual" style="font-size:12px;color:#888;margin-left:8px;"></span>
+      </div>
+      <div class="ai-result" id="ai-result-manual"></div>
+    </div>
+
+    <!-- 共通フィールド -->
+    <div class="form-row">
+      <div class="field"><label>日付</label><input type="date" id="f-date"></div>
+      <div class="field"><label>食事時刻</label><input type="time" id="f-time"></div>
+      <div class="field"><label>タイミング</label><select id="f-meal"><option>朝食</option><option>昼食</option><option>夕食</option><option>間食</option></select></div>
+    </div>
+    <div id="food-name-display" style="display:none;margin-bottom:8px;">
+      <span style="font-size:12px;color:#666;">食事名：</span>
+      <span id="f-name-label" style="font-size:13px;font-weight:500;"></span>
+    </div>
+    <input type="hidden" id="f-name">
+    <div class="form-row">
+      <div class="field"><label>カロリー (kcal)</label><input type="number" id="f-kcal" step="1" min="0" placeholder="600"></div>
+      <div class="field"><label>タンパク質 (g)</label><input type="number" id="f-protein" step="0.1" min="0" placeholder="30"></div>
+      <div class="field"><label>脂質 (g)</label><input type="number" id="f-fatg" step="0.1" min="0" placeholder="15"></div>
+      <div class="field"><label>炭水化物 (g)</label><input type="number" id="f-carb" step="0.1" min="0" placeholder="60"></div>
+    </div>
+    <div class="form-row"><div class="field"><label>メモ</label><input type="text" id="f-note" placeholder="外食、自炊など"></div></div>
+    <button class="save-btn" id="f-btn" onclick="saveFood()" style="width:100%;padding:12px;font-size:15px;margin-top:4px;">スプシに保存</button>
+    <span id="f-msg" style="font-size:12px;margin-left:10px;"></span>
+  </div>
+  <div class="card"><div class="card-title">本日の栄養サマリー</div><div id="today-macro"><div class="no-data">本日の食事記録はまだありません</div></div></div>
+  <div class="card"><div class="card-title">カロリー推移（直近7日）</div><div class="chart-wrap"><canvas id="chart-food-kcal"></canvas></div></div>
+  <div class="card"><div class="card-title">PFCバランス推移（直近7日）</div><div class="chart-wrap"><canvas id="chart-pfc"></canvas></div></div>
+</div>
+
+<!-- 記録一覧 -->
+<div id="tab-log" class="panel">
+  <div class="card"><div class="card-title">体重の記録</div><div id="log-weight"><div class="no-data">読み込み中...</div></div></div>
+  <div class="card"><div class="card-title">睡眠の記録</div><div id="log-sleep"><div class="no-data">読み込み中...</div></div></div>
+  <div class="card"><div class="card-title">運動の記録</div><div id="log-exercise"><div class="no-data">読み込み中...</div></div></div>
+  <div class="card"><div class="card-title">食事の記録</div><div id="log-food"><div class="no-data">読み込み中...</div></div></div>
+</div>
+</div>
+
+<script>
+const GAS_URL='https://script.google.com/macros/s/AKfycbzf8K3bQNmX4FHGPogbJbLouGHgA2qkpinJ_uNCKXXtz66tFoMCRKhAff5Za_creV8/exec';
+const AI_URL='https://api.anthropic.com/v1/messages';
+let DB={weight:[],sleep:[],exercise:[],food:[]};
+
+function today(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){return String(d).slice(5);}
+
+function setSyncStatus(state,msg){
+  const dot=document.getElementById('sync-dot');
+  dot.className='sync-dot'+(state==='ok'?'':state==='err'?' err':' loading');
+  document.getElementById('sync-status').textContent=msg;
+}
+
+async function gasGet(type){
+  const r=await fetch(GAS_URL+'?type='+type);
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error);
+  return j.rows.map(row=>{const o={};for(const k in row){const v=row[k];o[k]=(v===''||v===null||v===undefined)?null:v;}return o;});
+}
+
+async function gasPost(type,data){
+  const r=await fetch(GAS_URL,{method:'POST',body:JSON.stringify({type,data})});
+  const j=await r.json();
+  if(!j.ok)throw new Error(j.error);
+}
+
+async function reloadAll(){
+  setSyncStatus('loading','読み込み中...');
+  try{
+    const [w,s,e,f]=await Promise.all([gasGet('weight'),gasGet('sleep'),gasGet('exercise'),gasGet('food')]);
+    DB.weight=w.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    DB.sleep=s.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    DB.exercise=e.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    DB.food=f.sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+    setSyncStatus('ok','同期済み — '+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}));
+    renderAll();
+  }catch(err){setSyncStatus('err','エラー: '+err.message);}
+}
+
+let currentPhotoBase64=null;
+let currentPhotoType=null;
+let foodMode='photo';
+
+function setFoodMode(mode){
+  foodMode=mode;
+  document.getElementById('food-photo-mode').style.display=mode==='photo'?'block':'none';
+  document.getElementById('food-manual-mode').style.display=mode==='manual'?'block':'none';
+  const pb=document.getElementById('mode-photo-btn'),mb=document.getElementById('mode-manual-btn');
+  if(mode==='photo'){pb.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid #1a1a1a;background:#1a1a1a;color:#fff;font-size:13px;cursor:pointer;';mb.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-size:13px;cursor:pointer;';}
+  else{mb.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid #1a1a1a;background:#1a1a1a;color:#fff;font-size:13px;cursor:pointer;';pb.style.cssText='flex:1;padding:9px;border-radius:8px;border:1.5px solid #ddd;background:#fff;color:#666;font-size:13px;cursor:pointer;';}
+}
+
+function onPhotoSelected(input){
+  const file=input.files[0];if(!file)return;
+  const now=new Date();
+  document.getElementById('f-date').value=now.toISOString().slice(0,10);
+  document.getElementById('f-time').value=now.toTimeString().slice(0,5);
+  autoSetMealType(now.getHours());
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const dataUrl=e.target.result;
+    document.getElementById('preview-img').src=dataUrl;
+    document.getElementById('photo-preview').style.display='block';
+    document.getElementById('photo-drop').style.display='none';
+    currentPhotoBase64=dataUrl.split(',')[1];
+    currentPhotoType=file.type||'image/jpeg';
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPhoto(){
+  currentPhotoBase64=null;currentPhotoType=null;
+  document.getElementById('photo-preview').style.display='none';
+  document.getElementById('photo-drop').style.display='block';
+  document.getElementById('photo-input').value='';
+}
+
+function autoSetMealType(hour){
+  const sel=document.getElementById('f-meal');
+  if(hour>=5&&hour<10)sel.value='朝食';
+  else if(hour>=10&&hour<15)sel.value='昼食';
+  else if(hour>=15&&hour<18)sel.value='間食';
+  else sel.value='夕食';
+}
+
+const JSON_PROMPT='必ずJSON形式のみで返してください。説明文やMarkdownコードブロックは不要です。\n{"kcal":数値,"protein":数値,"fat":数値,"carb":数値,"name":"食事名を日本語で","note":"推定根拠を一言で"}';
+
+async function callAI(content){
+  const res=await fetch(AI_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,messages:[{role:'user',content}]})});
+  const data=await res.json();
+  const text=data.content.find(b=>b.type==='text')?.text||'';
+  return JSON.parse(text.replace(/```json|```/g,'').trim());
+}
+
+function applyEstimate(parsed,resultId){
+  const name=parsed.name||'';
+  document.getElementById('f-name').value=name;
+  if(name){document.getElementById('f-name-label').textContent=name;document.getElementById('food-name-display').style.display='block';}
+  document.getElementById('f-kcal').value=Math.round(parsed.kcal)||'';
+  document.getElementById('f-protein').value=parsed.protein?parseFloat(parsed.protein).toFixed(1):'';
+  document.getElementById('f-fatg').value=parsed.fat?parseFloat(parsed.fat).toFixed(1):'';
+  document.getElementById('f-carb').value=parsed.carb?parseFloat(parsed.carb).toFixed(1):'';
+  const el=document.getElementById(resultId);
+  el.innerHTML=`<strong>${name||'推定結果'}：</strong>${Math.round(parsed.kcal)}kcal / P:${parseFloat(parsed.protein||0).toFixed(1)}g / F:${parseFloat(parsed.fat||0).toFixed(1)}g / C:${parseFloat(parsed.carb||0).toFixed(1)}g<br><span style="opacity:.8;">${parsed.note||''}</span><br><span style="opacity:.65;font-size:11px;">※ 推定値です。下の数値を直接修正できます。</span>`;
+  el.classList.add('show');
+}
+
+async function estimateNutrition(){
+  if(!currentPhotoBase64){document.getElementById('ai-status').textContent='先に写真を選択してください';return;}
+  const btn=document.getElementById('ai-btn');
+  btn.disabled=true;btn.textContent='推定中...';document.getElementById('ai-status').textContent='';
+  try{const parsed=await callAI([{type:'image',source:{type:'base64',media_type:currentPhotoType,data:currentPhotoBase64}},{type:'text',text:'この食事の栄養素を推定してください。\n'+JSON_PROMPT}]);applyEstimate(parsed,'ai-result');}
+  catch(err){document.getElementById('ai-status').textContent='推定失敗: '+err.message;}
+  btn.disabled=false;btn.textContent='✦ AIで自動推定';
+}
+
+async function estimateNutritionManual(){
+  const name=document.getElementById('f-name-manual').value.trim();
+  if(!name){document.getElementById('ai-status-manual').textContent='食事内容を入力してください';return;}
+  const btn=document.getElementById('ai-btn-manual');
+  btn.disabled=true;btn.textContent='推定中...';document.getElementById('ai-status-manual').textContent='';
+  try{const parsed=await callAI([{type:'text',text:`食事内容：「${name}」\n\n${JSON_PROMPT}`}]);if(!parsed.name)parsed.name=name;applyEstimate(parsed,'ai-result-manual');}
+  catch(err){document.getElementById('ai-status-manual').textContent='推定失敗: '+err.message;}
+  btn.disabled=false;btn.textContent='✦ 名前からAI推定';
+}
+
+function flash(id,msg,ok=true){
+  const el=document.getElementById(id);if(!el)return;
+  el.style.color=ok?'#27ae60':'#e74c3c';el.textContent=msg;
+  setTimeout(()=>el.textContent='',3000);
+}
+function setBtn(id,loading){const el=document.getElementById(id);if(!el)return;el.disabled=loading;el.textContent=loading?'保存中...':'記録する';}
+function clearFields(ids){ids.forEach(id=>{const el=document.getElementById(id);if(el)el.value='';})}
+
+async function saveWeight(){
+  const d=document.getElementById('w-date').value||today();
+  const kg=parseFloat(document.getElementById('w-kg').value);
+  if(!kg){flash('w-msg','体重を入力してください',false);return;}
+  setBtn('w-btn',true);
+  try{await gasPost('weight',{date:d,kg,fat:parseFloat(document.getElementById('w-fat').value)||'',note:document.getElementById('w-note').value});clearFields(['w-kg','w-fat','w-note']);flash('w-msg','保存しました');await reloadAll();}
+  catch(e){flash('w-msg','エラー: '+e.message,false);}
+  setBtn('w-btn',false);
+}
+
+async function saveSleep(){
+  const d=document.getElementById('s-date').value||today();
+  const h=parseFloat(document.getElementById('s-h').value);
+  if(!h){flash('s-msg','睡眠時間を入力してください',false);return;}
+  setBtn('s-btn',true);
+  try{await gasPost('sleep',{date:d,h,q:parseInt(document.getElementById('s-q').value)||'',bed:document.getElementById('s-bed').value,wake:document.getElementById('s-wake').value,note:document.getElementById('s-note').value});clearFields(['s-h','s-q','s-bed','s-wake','s-note']);flash('s-msg','保存しました');await reloadAll();}
+  catch(e){flash('s-msg','エラー: '+e.message,false);}
+  setBtn('s-btn',false);
+}
+
+async function saveExercise(){
+  const d=document.getElementById('e-date').value||today();
+  const name=document.getElementById('e-name').value;
+  if(!name){flash('e-msg','種目を入力してください',false);return;}
+  setBtn('e-btn',true);
+  try{await gasPost('exercise',{date:d,name,min:parseInt(document.getElementById('e-min').value)||'',intensity:document.getElementById('e-int').value,note:document.getElementById('e-note').value});clearFields(['e-name','e-min','e-note']);document.getElementById('e-int').value='';flash('e-msg','保存しました');await reloadAll();}
+  catch(e){flash('e-msg','エラー: '+e.message,false);}
+  setBtn('e-btn',false);
+}
+
+async function saveFood(){
+  const d=document.getElementById('f-date').value||today();
+  const t=document.getElementById('f-time').value||new Date().toTimeString().slice(0,5);
+  const nameHidden=document.getElementById('f-name').value;
+  const nameManual=document.getElementById('f-name-manual')?document.getElementById('f-name-manual').value:'';
+  const name=nameHidden||nameManual;
+  const kcal=parseInt(document.getElementById('f-kcal').value);
+  if(!name&&!kcal){flash('f-msg','食事内容かカロリーを入力してください',false);return;}
+  setBtn('f-btn',true);
+  try{
+    await gasPost('food',{date:d,time:t,meal:document.getElementById('f-meal').value,name:name||'',kcal:kcal||'',protein:parseFloat(document.getElementById('f-protein').value)||'',fat:parseFloat(document.getElementById('f-fatg').value)||'',carb:parseFloat(document.getElementById('f-carb').value)||'',note:document.getElementById('f-note').value});
+    clearFields(['f-name','f-kcal','f-protein','f-fatg','f-carb','f-note','f-time','f-name-manual']);
+    clearPhoto();
+    document.getElementById('ai-result').classList.remove('show');
+    if(document.getElementById('ai-result-manual'))document.getElementById('ai-result-manual').classList.remove('show');
+    document.getElementById('food-name-display').style.display='none';
+    flash('f-msg','保存しました');await reloadAll();
+  }catch(e){flash('f-msg','エラー: '+e.message,false);}
+  setBtn('f-btn',false);
+}
+
+async function saveQuick(){
+  const d=document.getElementById('q-date').value||today();
+  const kg=parseFloat(document.getElementById('q-weight').value);
+  const h=parseFloat(document.getElementById('q-sleep').value);
+  const ename=document.getElementById('q-exname').value;
+  const emin=parseInt(document.getElementById('q-exmin').value);
+  const eint=document.getElementById('q-exint').value;
+  if(!kg&&!h&&!ename){flash('q-msg','何か入力してください',false);return;}
+  setBtn('q-btn',true);
+  try{
+    const tasks=[];
+    if(kg)tasks.push(gasPost('weight',{date:d,kg,fat:'',note:''}));
+    if(h)tasks.push(gasPost('sleep',{date:d,h,q:'',bed:'',wake:'',note:''}));
+    if(ename)tasks.push(gasPost('exercise',{date:d,name:ename,min:isNaN(emin)?'':emin,intensity:eint,note:''}));
+    await Promise.all(tasks);
+    clearFields(['q-weight','q-sleep','q-exname','q-exmin']);document.getElementById('q-exint').value='';
+    flash('q-msg','保存しました');await reloadAll();
+  }catch(e){flash('q-msg','エラー: '+e.message,false);}
+  setBtn('q-btn',false);
+}
+
+let charts={};
+function makeChart(id,type,labels,datasets,yOpts){
+  const el=document.getElementById(id);if(!el)return;
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(el,{type,data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:datasets.length>1,labels:{font:{size:11},boxWidth:10,padding:12}}},scales:{x:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11},maxTicksLimit:7}},y:{grid:{color:'rgba(0,0,0,0.05)'},ticks:{font:{size:11}},beginAtZero:false,...(yOpts||{})}}}});
+}
+
+function last14(){const a=[];for(let i=13;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);a.push(d.toISOString().slice(0,10));}return a;}
+function last7(){const a=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);a.push(d.toISOString().slice(0,10));}return a;}
+function thisWeek(){const n=new Date();const day=n.getDay()||7;const m=new Date(n);m.setDate(n.getDate()-day+1);const a=[];for(let i=0;i<7;i++){const d=new Date(m);d.setDate(m.getDate()+i);a.push(d.toISOString().slice(0,10));}return a;}
+function dailyKcal(date){return DB.food.filter(r=>String(r.date)===date).reduce((s,r)=>s+(parseFloat(r.kcal)||0),0);}
+
+function renderOverview(){
+  const w=DB.weight,s=DB.sleep,e=DB.exercise;
+  const lw=w[w.length-1];
+  document.getElementById('ov-weight').textContent=lw?parseFloat(lw.kg).toFixed(1):'--';
+  if(w.length>=2){const d=parseFloat(w[w.length-1].kg)-parseFloat(w[w.length-2].kg);const el=document.getElementById('ov-weight-d');el.textContent=(d>0?'+':'')+d.toFixed(1)+'kg 前回比';el.className='stat-delta '+(d>0?'delta-up':d<0?'delta-down':'delta-eq');}
+  const ls=s[s.length-1];
+  document.getElementById('ov-sleep').textContent=ls?parseFloat(ls.h).toFixed(1):'--';
+  if(s.length>=2){const d=parseFloat(s[s.length-1].h)-parseFloat(s[s.length-2].h);const el=document.getElementById('ov-sleep-d');el.textContent=(d>0?'+':'')+d.toFixed(1)+'h 前回比';el.className='stat-delta '+(d>0?'delta-down':d<0?'delta-up':'delta-eq');}
+  const week=thisWeek();
+  document.getElementById('ov-ex').textContent=e.filter(r=>week.includes(String(r.date))).length;
+  document.getElementById('ov-ex-d').textContent='今週の運動回数';
+  const tk=dailyKcal(today());
+  document.getElementById('ov-kcal').textContent=tk?Math.round(tk):'--';
+  if(tk)document.getElementById('ov-kcal-d').textContent='本日合計';
+  const d14=last14();
+  const wmap=Object.fromEntries(w.map(r=>[String(r.date),parseFloat(r.kg)]));
+  const wv=d14.map(d=>wmap[d]??null);
+  makeChart('chart-ov-weight','line',d14.map(fmtDate),[{label:'体重(kg)',data:wv,borderColor:'#2980b9',backgroundColor:'rgba(41,128,185,0.08)',pointRadius:3,tension:0.3,spanGaps:true}],{min:wv.filter(v=>v!==null).length?Math.min(...wv.filter(v=>v!==null))-2:undefined});
+  makeChart('chart-ov-kcal','bar',last7().map(fmtDate),[{label:'kcal',data:last7().map(d=>dailyKcal(d)||null),backgroundColor:'rgba(192,57,43,0.5)',borderColor:'#c0392b',borderWidth:1,borderRadius:4}],{beginAtZero:true});
+}
+
+function renderWeight(){
+  const arr=DB.weight.slice(-30);
+  makeChart('chart-weight','line',arr.map(r=>fmtDate(r.date)),[{label:'体重(kg)',data:arr.map(r=>parseFloat(r.kg)),borderColor:'#2980b9',backgroundColor:'rgba(41,128,185,0.08)',pointRadius:4,tension:0.3}],{});
+  const fa=arr.filter(r=>r.fat!==null&&r.fat!=='');
+  makeChart('chart-fat','line',fa.map(r=>fmtDate(r.date)),[{label:'体脂肪率(%)',data:fa.map(r=>parseFloat(r.fat)),borderColor:'#c0392b',backgroundColor:'rgba(192,57,43,0.08)',pointRadius:4,tension:0.3}],{});
+}
+
+function renderSleep(){
+  const arr=DB.sleep.slice(-30);
+  makeChart('chart-sleep','bar',arr.map(r=>fmtDate(r.date)),[{label:'睡眠(h)',data:arr.map(r=>parseFloat(r.h)),backgroundColor:'rgba(142,68,173,0.5)',borderColor:'#8e44ad',borderWidth:1,borderRadius:4}],{beginAtZero:true,max:12});
+  const qa=arr.filter(r=>r.q!==null&&r.q!=='');
+  makeChart('chart-sleepq','line',qa.map(r=>fmtDate(r.date)),[{label:'質(1-5)',data:qa.map(r=>parseFloat(r.q)),borderColor:'#8e44ad',backgroundColor:'rgba(142,68,173,0.08)',pointRadius:4,tension:0.3}],{min:0,max:5});
+}
+
+function renderExercise(){
+  const week=thisWeek();
+  const days=['月','火','水','木','金','土','日'];
+  const counts=week.map(d=>DB.exercise.filter(r=>String(r.date)===d).length);
+  const mins=week.map(d=>DB.exercise.filter(r=>String(r.date)===d).reduce((s,r)=>s+(parseFloat(r.min)||0),0));
+  makeChart('chart-ex','bar',days,[
+    {label:'回数',data:counts,backgroundColor:'rgba(39,174,96,0.5)',borderColor:'#27ae60',borderWidth:1,borderRadius:4,yAxisID:'y'},
+    {label:'分',data:mins,backgroundColor:'rgba(22,160,133,0.3)',borderColor:'#16a085',borderWidth:1,borderRadius:4,yAxisID:'y1'}
+  ]);
+  if(charts['chart-ex']){charts['chart-ex'].options.scales.y1={position:'right',grid:{display:false},ticks:{font:{size:11}},beginAtZero:true};charts['chart-ex'].update();}
+}
+
+function renderFood(){
+  const t=today();
+  const ti=DB.food.filter(r=>String(r.date)===t);
+  const totK=ti.reduce((s,r)=>s+(parseFloat(r.kcal)||0),0);
+  const totP=ti.reduce((s,r)=>s+(parseFloat(r.protein)||0),0);
+  const totF=ti.reduce((s,r)=>s+(parseFloat(r.fat)||0),0);
+  const totC=ti.reduce((s,r)=>s+(parseFloat(r.carb)||0),0);
+  const el=document.getElementById('today-macro');
+  if(!ti.length){el.innerHTML='<div class="no-data">本日の食事記録はまだありません</div>';}
+  else{
+    const pct=(v,t)=>t?Math.min(Math.round(v/t*100),100):0;
+    el.innerHTML=`<div style="margin-bottom:12px;"><span style="font-size:28px;font-weight:500;">${Math.round(totK)}</span><span style="font-size:14px;color:#888;margin-left:4px;">kcal（${ti.length}食）</span></div>
+    <div class="macro-grid">
+      <div class="macro-card"><div class="macro-name">タンパク質</div><div class="macro-val">${totP.toFixed(1)}<span style="font-size:11px;font-weight:400;color:#888;">g</span></div><div class="macro-bar"><div class="macro-fill" style="width:${pct(totP*4,totK)}%;background:#2980b9;"></div></div></div>
+      <div class="macro-card"><div class="macro-name">脂質</div><div class="macro-val">${totF.toFixed(1)}<span style="font-size:11px;font-weight:400;color:#888;">g</span></div><div class="macro-bar"><div class="macro-fill" style="width:${pct(totF*9,totK)}%;background:#c0392b;"></div></div></div>
+      <div class="macro-card"><div class="macro-name">炭水化物</div><div class="macro-val">${totC.toFixed(1)}<span style="font-size:11px;font-weight:400;color:#888;">g</span></div><div class="macro-bar"><div class="macro-fill" style="width:${pct(totC*4,totK)}%;background:#27ae60;"></div></div></div>
+    </div>`;
+  }
+  const d7=last7();
+  makeChart('chart-food-kcal','bar',d7.map(fmtDate),[{label:'kcal',data:d7.map(d=>dailyKcal(d)||null),backgroundColor:'rgba(192,57,43,0.5)',borderColor:'#c0392b',borderWidth:1,borderRadius:4}],{beginAtZero:true});
+  const sum=(d,k)=>DB.food.filter(r=>String(r.date)===d).reduce((s,r)=>s+(parseFloat(r[k])||0),0);
+  makeChart('chart-pfc','bar',d7.map(fmtDate),[
+    {label:'P(g)',data:d7.map(d=>sum(d,'protein')||null),backgroundColor:'rgba(41,128,185,0.5)',borderColor:'#2980b9',borderWidth:1,borderRadius:4},
+    {label:'F(g)',data:d7.map(d=>sum(d,'fat')||null),backgroundColor:'rgba(192,57,43,0.4)',borderColor:'#c0392b',borderWidth:1,borderRadius:4},
+    {label:'C(g)',data:d7.map(d=>sum(d,'carb')||null),backgroundColor:'rgba(39,174,96,0.4)',borderColor:'#27ae60',borderWidth:1,borderRadius:4}
+  ],{beginAtZero:true});
+}
+
+function renderLogs(){
+  const fmt=(arr,type)=>{
+    if(!arr.length)return'<div class="no-data">まだ記録がありません</div>';
+    return arr.slice().reverse().map(r=>{
+      let vals='';
+      if(type==='weight')vals=`<span class="badge b-weight">${parseFloat(r.kg).toFixed(1)}kg</span>${r.fat?`<span class="badge b-weight">${parseFloat(r.fat).toFixed(1)}%</span>`:''}${r.note?` <span style="color:#aaa;font-size:12px;">${r.note}</span>`:''}`;
+      if(type==='sleep')vals=`<span class="badge b-sleep">${parseFloat(r.h).toFixed(1)}h</span>${r.q?`<span class="badge b-sleep">質:${r.q}</span>`:''}${r.bed?` <span style="color:#aaa;font-size:12px;">${r.bed}〜${r.wake}</span>`:''}`;
+      if(type==='exercise')vals=`<span class="badge b-ex">${r.name}</span>${r.min?`<span class="badge b-ex">${r.min}分</span>`:''}${r.intensity?`<span class="badge b-ex">強度:${r.intensity}</span>`:''}`;
+      if(type==='food')vals=`<span class="badge b-food">${r.meal}</span>${r.name?`<span style="font-size:13px;margin-right:6px;">${r.name}</span>`:''}${r.kcal?`<span class="badge b-kcal">${Math.round(r.kcal)}kcal</span>`:''}${r.protein?`<span style="font-size:11px;color:#aaa;">P:${parseFloat(r.protein).toFixed(1)}g</span>`:''}`;
+      return`<div class="log-row"><span class="log-date">${fmtDate(String(r.date))}</span><span class="log-vals">${vals}</span></div>`;
+    }).join('');
+  };
+  document.getElementById('log-weight').innerHTML=fmt(DB.weight,'weight');
+  document.getElementById('log-sleep').innerHTML=fmt(DB.sleep,'sleep');
+  document.getElementById('log-exercise').innerHTML=fmt(DB.exercise,'exercise');
+  document.getElementById('log-food').innerHTML=fmt(DB.food,'food');
+}
+
+function renderAll(){renderOverview();renderWeight();renderSleep();renderExercise();renderFood();renderLogs();}
+
+function switchTab(name){
+  const names=['overview','weight','sleep','exercise','food','log'];
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',names[i]===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  renderAll();
+}
+
+function initDates(){
+  ['q-date','w-date','s-date','e-date','f-date'].forEach(id=>{
+    const el=document.getElementById(id);if(el&&!el.value)el.value=today();
+  });
+  const ft=document.getElementById('f-time');
+  if(ft&&!ft.value){ft.value=new Date().toTimeString().slice(0,5);autoSetMealType(new Date().getHours());}
+}
+
+initDates();
+reloadAll();
+</script>
+</body>
+</html>
