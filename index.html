@@ -31,7 +31,8 @@ h1{font-size:18px;font-weight:500;margin-bottom:1.5rem;}
 .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px;}
 .field{display:flex;flex-direction:column;gap:4px;}
 .field label{font-size:12px;color:#666;}
-.field input,.field select{font-size:14px;padding:7px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;width:100%;}
+.field input,.field select{font-size:16px;padding:9px 10px;border:1px solid #ddd;border-radius:8px;background:#fff;color:#1a1a1a;width:100%;-webkit-appearance:none;appearance:none;min-height:44px;}
+input[type="date"],input[type="time"]{-webkit-appearance:none;appearance:none;background:#fff;}
 .field input:focus,.field select:focus{outline:none;border-color:#999;}
 .save-btn{font-size:13px;padding:7px 18px;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;margin-top:4px;}
 .save-btn:hover{opacity:.85;}.save-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -263,11 +264,22 @@ function setSyncStatus(state,msg){
   document.getElementById('sync-status').textContent=msg;
 }
 
-async function gasGet(type){
-  const r=await fetch(GAS_URL+'?type='+type);
-  const j=await r.json();
-  if(!j.ok)throw new Error(j.error);
-  return j.rows.map(row=>{const o={};for(const k in row){const v=row[k];o[k]=(v===''||v===null||v===undefined)?null:v;}return o;});
+function gasGet(type){
+  return new Promise((resolve,reject)=>{
+    const cb='_cb_'+type+'_'+Date.now();
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>{
+      delete window[cb];document.head.removeChild(script);
+      reject(new Error('timeout'));
+    },15000);
+    window[cb]=function(j){
+      clearTimeout(timer);delete window[cb];document.head.removeChild(script);
+      if(!j.ok){reject(new Error(j.error));return;}
+      resolve(j.rows.map(row=>{const o={};for(const k in row){const v=row[k];o[k]=(v===''||v===null||v===undefined)?null:v;}return o;}));
+    };
+    script.src=GAS_URL+'?type='+type+'&callback='+cb;
+    document.head.appendChild(script);
+  });
 }
 
 async function gasPost(type,data){
